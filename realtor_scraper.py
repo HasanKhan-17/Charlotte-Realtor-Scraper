@@ -5,12 +5,18 @@ import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 
+print("===== SCRIPT STARTED =====")
+
 API_KEY = os.getenv("SERPER_API_KEY")
+
+print("API KEY FOUND:", bool(API_KEY))
 
 industry = sys.argv[1]
 city = sys.argv[2]
 state = sys.argv[3]
 lead_limit = int(sys.argv[4])
+
+print(industry, city, state, lead_limit)
 
 query = f"{industry} in {city}, {state}"
 
@@ -19,13 +25,23 @@ headers = {
     "Content-Type": "application/json"
 }
 
+print("Searching:", query)
+
 response = requests.post(
     "https://google.serper.dev/search",
     headers=headers,
     json={"q": query, "num": 100}
 )
 
-results = response.json().get("organic", [])
+print("Status:", response.status_code)
+
+data = response.json()
+
+print(data.keys())
+
+results = data.get("organic", [])
+
+print("Found", len(results), "results")
 
 rows = []
 
@@ -43,17 +59,14 @@ for result in results:
         html = requests.get(
             website,
             timeout=10,
-            headers={
-                "User-Agent":"Mozilla/5.0"
-            }
+            headers={"User-Agent":"Mozilla/5.0"}
         ).text
 
-        soup = BeautifulSoup(html,"html.parser")
+        soup = BeautifulSoup(html, "html.parser")
 
         text = soup.get_text(" ", strip=True)
 
         emails = list(set(email_pattern.findall(text)))
-
         phones = list(set(phone_pattern.findall(text)))
 
         rows.append({
@@ -63,18 +76,17 @@ for result in results:
             "Phone": ", ".join(phones)
         })
 
-    except Exception:
-        pass
+    except Exception as e:
+        print(e)
 
-    if len(rows) >= lead_limit:
-        break
-
-os.makedirs("output",exist_ok=True)
+os.makedirs("output", exist_ok=True)
 
 df = pd.DataFrame(rows)
 
-df.to_excel("output/leads.xlsx",index=False)
-
 print(df.head())
 
-print("Done.")
+df.to_excel("output/leads.xlsx", index=False)
+
+print("Excel saved.")
+
+print("===== DONE =====")
