@@ -9,39 +9,41 @@ print("===== SCRIPT STARTED =====")
 
 API_KEY = os.getenv("SERPER_API_KEY")
 
-print("API KEY FOUND:", bool(API_KEY))
+if not API_KEY:
+    raise Exception("SERPER_API_KEY not found.")
+
+print("API KEY FOUND")
 
 industry = sys.argv[1]
 city = sys.argv[2]
 state = sys.argv[3]
 lead_limit = int(sys.argv[4])
 
-print(industry, city, state, lead_limit)
-
 query = f"{industry} in {city}, {state}"
+
+print(f"Searching: {query}")
 
 headers = {
     "X-API-KEY": API_KEY,
     "Content-Type": "application/json"
 }
 
-print("Searching:", query)
-
 response = requests.post(
     "https://google.serper.dev/search",
     headers=headers,
-    json={"q": query, "num": 100}
+    json={
+        "q": query,
+        "num": 100
+    }
 )
 
-print("Status:", response.status_code)
+print("Search Status:", response.status_code)
 
 data = response.json()
 
-print(data.keys())
-
 results = data.get("organic", [])
 
-print("Found", len(results), "results")
+print(f"Found {len(results)} search results")
 
 rows = []
 
@@ -52,17 +54,22 @@ for result in results:
 
     website = result.get("link")
 
-    print("Checking:", website)
+    if not website:
+        continue
+
+    print(f"Checking {website}")
 
     try:
 
-        html = requests.get(
+        response = requests.get(
             website,
-            timeout=10,
-            headers={"User-Agent":"Mozilla/5.0"}
-        ).text
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            },
+            timeout=10
+        )
 
-        soup = BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(response.text, "html.parser")
 
         text = soup.get_text(" ", strip=True)
 
@@ -70,14 +77,22 @@ for result in results:
         phones = list(set(phone_pattern.findall(text)))
 
         rows.append({
-            "Business": result.get("title"),
+            "Business": result.get("title", ""),
             "Website": website,
             "Email": ", ".join(emails),
             "Phone": ", ".join(phones)
         })
 
+        print(
+            f"Emails: {len(emails)} | Phones: {len(phones)}"
+        )
+
     except Exception as e:
-        print(e)
+        print(f"ERROR: {website}")
+        print(str(e))
+
+    if len(rows) >= lead_limit:
+        break
 
 os.makedirs("output", exist_ok=True)
 
@@ -85,8 +100,10 @@ df = pd.DataFrame(rows)
 
 print(df.head())
 
-df.to_excel("output/leads.xlsx", index=False)
+output_file = "output/leads.xlsx"
 
-print("Excel saved.")
+df.to_excel(output_file, index=False)
+
+print(f"Saved {len(df)} leads to {output_file}")
 
 print("===== DONE =====")
